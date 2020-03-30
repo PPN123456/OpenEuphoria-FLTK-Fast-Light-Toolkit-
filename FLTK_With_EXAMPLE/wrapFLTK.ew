@@ -1,0 +1,437 @@
+ 
+
+include std/machine.e
+include std/math.e
+include std/dll.e
+--include std/os.e
+
+atom fltkLIB
+sequence wlib = "fltk-c-1.3.3-32.dll"
+ifdef WIN32 then
+  fltkLIB = open_dll(wlib)
+ elsifdef LINUX or FREEBSD then
+  fltkLIB = open_dll("libfltk-c-1.3.3-32.so")
+end ifdef
+
+if fltkLIB = -1 then
+	printf(1,"Failed to load :'%s'\n", {wlib})
+	abort(-1)
+end if
+---------------------------------------
+--------------TYPES--------------------
+public   type ubyte_ (integer val)
+    return  val >=0 and val<=255
+end type
+
+public type FL_FONT(atom val)
+    return 1
+end type
+
+public type FL_FONTSIZE(atom val) -- Size of a font in pixels. This is the approximate height of a font in pixels.
+    return 1
+end type
+
+constant FL_NORMAL_SIZE = 14
+
+public type FL_BOXTYPE(atom val)
+    return 1
+end type
+
+public type FL_COLOR(atom val)
+    return 1
+end type
+--  + The Fl_Color type holds an FLTK color value.
+--   Colors are either 8-bit indexes into a virtual colormap or 24-bit RGB color values.
+--   Color indices occupy the lower 8 bits of the value, 
+--   while RGB colors occupy the upper 24 bits. (RGBI)
+--   Fl_Color => &Hrrggbbii
+--                  | | | |
+--                  | | | +--- index between 0 and 255
+--                  | | +----- blue color component (8 bit)
+--                | +------- green component (8 bit)
+--                 +--------- red component (8 bit)
+--   A color can have either an index or an rgb value.
+--   Colors with rgb set and an index >0 are reserved for special use.
+
+-- Standard colors. These are used as default colors in widgets and altered as necessary
+
+public FL_COLOR 
+                Fl_FOREGROUND_COLOR  =  0, -- the default foreground color (0) used for labels and text
+                Fl_BACKGROUND2_COLOR =  7, -- the default background color for text, list, and valuator widgets
+                Fl_INACTIVE_COLOR    =  8, -- the inactive foreground color
+                Fl_SELECTION_COLOR   = 15, -- the default selection/highlight color
+                 
+                Fl_FREE_COLOR =16,
+                Fl_NUM_FREE_COLOR =16,
+
+                -- boxtypes generally limit themselves to these colors so the whole ramp is not allocated:
+                Fl_GRAY_RAMP = 32,
+                Fl_NUM_GRAY = 24,
+                Fl_GRAY0 =  32, --  'A'
+                Fl_DARK3 =  39, --  'H'
+                Fl_DARK2 =  45, --  'N'
+                Fl_DARK1          =  47, --  'P'
+                Fl_BACKGROUND_COLOR= 49,  --  'R' default background color
+                L_GRAY = 49, -- = FL_BACKGROUND_COLOR
+                Fl_LIGHT1 =  50, --  'S'
+                Fl_LIGHT2 =  52, --  'U'
+                Fl_LIGHT3 =  54, --  'W'
+
+                -- FLTK provides a 5x8x5 RGB color cube that is used with colormap visuals
+                Fl_NUM_RED =5,
+                Fl_NUM_GREEN = 8,
+                Fl_NUM_BLUE =5,
+                Fl_COLOR_CUBE_ = 56,
+                Fl_BLACK       =  56, -- Fl_COLOR_CUBE_ + r000 + g000 + b000 
+                Fl_DARK_GREEN  =  60 ,-- Fl_COLOR_CUBE_ +        g004
+                Fl_GREEN       =  63, -- Fl_COLOR_CUBE_ +        g007
+                Fl_DARK_RED    =  72, -- Fl_COLOR_CUBE_ + r016
+                Fl_DARK_YELLOW =  76,
+                Fl_RED               =  88, -- Fl_COLOR_CUBE_ + r032
+                Fl_YELLOW            =  95,  
+                Fl_DARK_BLUE         = 136,-- Fl_COLOR_CUBE_ +        r080
+                Fl_DARK_MAGENTA      = 152,
+                Fl_DARK_CYAN         = 140,
+                Fl_BLUE              = 216,-- Fl_COLOR_CUBE_ +        b160
+                Fl_MAGENTA           = 248,
+                Fl_CYAN              = 223,
+                Fl_WHITE             = 255, 
+                FL_ICON_COLOR        = #ffffffff --icon color
+ -------------------------------------------------------------------
+ -------------------------------------------------------------------
+
+
+public FL_FONT
+                Fl_HELVETICA              =  0, --Helvetica (or Arial) normal (0)
+                Fl_BOLD                   =  1, -- bold
+                Fl_ITALIC                 =  2, -- oblique
+                Fl_BOLD_ITALIC            =  3, -- bold-oblique
+                Fl_HELVETICA_BOLD         = Fl_HELVETICA  or Fl_BOLD ,
+                Fl_HELVETICA_ITALIC       = Fl_HELVETICA or Fl_ITALIC,
+                Fl_HELVETICA_BOLD_ITALIC  = Fl_HELVETICA or Fl_BOLD_ITALIC,
+                Fl_COURIER                =  4, -- Courier normal
+                Fl_COURIER_BOLD           = Fl_COURIER   or Fl_BOLD,
+                Fl_COURIER_ITALIC         = Fl_COURIER   or Fl_ITALIC,
+                Fl_COURIER_BOLD_ITALIC    = Fl_COURIER   or Fl_BOLD_ITALIC,
+                Fl_TIMES                  =  8, -- Times roman
+                Fl_TIMES_BOLD             = Fl_TIMES     or Fl_BOLD,
+                Fl_TIMES_ITALIC           = Fl_TIMES     or Fl_ITALIC,
+                Fl_TIMES_BOLD_ITALIC      = Fl_TIMES     or Fl_BOLD_ITALIC,
+                Fl_SYMBOL                 = 12, -- Standard symbol font
+                Fl_SCREEN                 = 13, -- Default monospaced screen font
+                Fl_SCREEN_BOLD            = Fl_SCREEN    or Fl_BOLD, -- Default monospaced bold screen font
+                Fl_ZAPF_DINGBATS          = 15, -- Zapf-dingbats font
+                Fl_FREE_FONT              = 16 -- first one to allocate
+ 
+
+public constant 
+--declare function Fl_ButtonNew(byval x as long, byval y as long, byval w as long, byval h as long, byval label as const zstring ptr=0) as Fl_Button ptr
+    c_Fl_ButtonNew = define_c_func(fltkLIB,"Fl_ButtonNew",{C_DWORD, C_DWORD, C_DWORD, C_DWORD, C_POINTER}, C_POINTER),
+--declare function Fl_WindowNew(byval w as long, byval h as long, byval title as const zstring ptr=0) as Fl_Window ptr
+    c_Fl_WindowNew = define_c_func(fltkLIB, "Fl_WindowNew", {C_DWORD, C_DWORD, C_POINTER}, C_POINTER),
+--declare sub      Fl_WindowShow(byval win as Fl_Window ptr)    
+    c_Fl_WindowShow = define_c_proc(fltkLIB, "Fl_WindowShow", {C_POINTER}),
+--declare function Fl_Run() as long
+    c_Fl_Run = define_c_func(fltkLIB, "Fl_Run", {},C_DWORD),
+--declare sub      Fl_WidgetSetCallback    (byval wgt as Fl_Widget ptr, byval cb as Fl_Callback)    
+    c_Fl_WidgetSetCallback = define_c_proc(fltkLIB, "Fl_WidgetSetCallback", {C_POINTER, C_DWORD} ),
+--type Fl_Callback         as sub      (byval widget as Fl_Widget ptr, byval pData as any ptr)
+    c_Fl_Callback = define_c_proc(fltkLIB, "Fl_Callback", {C_POINTER, C_POINTER}),
+--declare function Fl_Wait() as long
+    c_Fl_Wait = define_c_func(fltkLIB, "Fl_Wait", {}, C_DWORD),
+--declare function Fl_Handle(byval event as FL_EVENT, byval win as Fl_Window ptr) as long
+    c_Fl_Handle = define_c_func(fltkLIB, "Fl_Handle", {C_POINTER, C_POINTER}, C_DWORD),
+--declare function Fl_EventNumber() as long
+    c_Fl_EventNumber = define_c_func(fltkLIB, "Fl_EventNumber", {}, C_DWORD),
+--declare sub      Fl_AddHandler(byval h as Fl_Event_Handler)
+    c_Fl_AddHandler = define_c_proc(fltkLIB, "Fl_AddHandler", {C_POINTER} ),
+--'Sets the current widget scheme. sheme can be "none","plastic", "gtk+" or "gleam" 
+--declare function Fl_SetScheme(byval scheme as const zstring ptr) as long
+    c_Fl_SetScheme = define_c_func(fltkLIB, "Fl_SetScheme", {C_POINTER}, C_DWORD),
+--declare sub      Fl_WidgetCopyLabel(byval wgt as Fl_Widget ptr, byval txt as const zstring ptr)
+    c_Fl_WidgetCopyLabel = define_c_proc(fltkLIB, "Fl_WidgetCopyLabel", {C_POINTER, C_POINTER} ),
+--declare function Fl_WidgetGetLabel(byval wgt as Fl_Widget ptr) as const zstring ptr
+    c_Fl_WidgetGetLabel = define_c_func(fltkLIB, "Fl_WidgetGetLabel", {C_POINTER}, C_POINTER),
+--declare sub      Fl_WidgetSetLabel(byval wgt as Fl_Widget ptr, byval txt as const zstring ptr)
+    c_Fl_WidgetSetLabel = define_c_proc(fltkLIB, "Fl_WidgetSetLabel", {C_POINTER, C_POINTER} ),
+--Intersects the current clip region with a rectangle and pushes this new region onto the stack. 
+--declare sub      DrawPushClip(byval x as long, byval y as long, byval w as long, byval h as long)    
+    c_DrawPushClip = define_c_proc(fltkLIB, "DrawPushClip", {C_DWORD, C_DWORD, C_DWORD, C_DWORD} ),
+--Widget Size
+--declare function Fl_WidgetGetW(byval wgt as Fl_Widget ptr) as long
+    c_Fl_WidgetGetW = define_c_func(fltkLIB, "Fl_WidgetGetW", {C_POINTER}, C_DWORD),
+    c_Fl_WidgetGetH = define_c_func(fltkLIB, "Fl_WidgetGetH", {C_POINTER}, C_DWORD),
+--declare sub      DrawSetColor(byval c as Fl_COLOR)
+    c_DrawSetColor = define_c_proc(fltkLIB, "DrawSetColor", {C_ULONG} ),
+--Color a rectangle that exactly fills the given bounding box.
+--declare sub      DrawRectFill        (byval x as long, byval y as long, byval w as long, byval h as long)
+    c_DrawRectFill = define_c_proc(fltkLIB, "DrawRectFill",{C_DWORD, C_DWORD, C_DWORD, C_DWORD} ),
+--Draw vertical and horizontal lines. A vertical line is drawn first, then a horizontal, then a vertical.
+--declare sub      DrawYXLine(byval x as long, byval y as long, byval y1 as long)    
+    c_DrawYXLine = define_c_proc(fltkLIB, "DrawYXLine", {C_DWORD, C_DWORD, C_DWORD} ),
+--Draw horizontal and vertical lines. A horizontal line is drawn first, then a vertical, then a horizontal.
+--declare sub      DrawXYLine(byval x as long, byval y as long, byval x1 as long)
+    c_DrawXYLine = define_c_proc(fltkLIB, "DrawXYLine", {C_DWORD, C_DWORD, C_DWORD} ),
+--!!! You must call DrawPopClip() once for every time you call DrawPushClip(), DrawPushNoClip(). !!!
+--declare sub      DrawPopClip()
+    c_DrawPopClip = define_c_proc(fltkLIB, "DrawPopClip", {}),
+--decclare function Fl_Double_WindowExNew(byval w as long, byval h as long, byval title as const zstring ptr=0) as Fl_Double_WindowEx ptr
+    c_Fl_Double_WindowExNew = define_c_func(fltkLIB, "Fl_Double_WindowExNew", {C_DWORD, C_DWORD, C_POINTER}, C_POINTER),
+--declare sub      Fl_Double_WindowExSetDrawCB      (byval ex as Fl_Double_WindowEx ptr, byval cb as Fl_DrawEx)
+    c_Fl_Double_WindowExSetDrawCB = define_c_proc(fltkLIB, "Fl_Double_WindowExSetDrawCB", {C_POINTER, C_POINTER} ),
+--The resizable widget defines the resizing box for the group.
+--declare sub      Fl_GroupSetResizable(byval grp as Fl_Group ptr, byval wgt as Fl_Widget ptr)
+    c_Fl_GroupSetResizable = define_c_proc(fltkLIB, "Fl_GroupSetResizable", {C_POINTER, C_POINTER} ),
+--declare sub      DrawRectFillRGBColor(byval x as long, byval y as long, byval w as long, byval h as long, byval r as ubyte, byval g as ubyte, byval b as ubyte)
+    c_DrawRectFillRGBColor = define_c_proc(fltkLIB, "DrawRectFillRGBColor", {C_DWORD, C_DWORD, C_DWORD, C_DWORD, C_UBYTE, C_UBYTE, C_UBYTE}),
+--declare sub      DrawSetFont(byval font as FL_FONT, byval size as FL_FONTSIZE)
+    c_DrawSetFont = define_c_proc(fltkLIB, "DrawSetFont", {C_ULONG, C_ULONG}),
+--declare sub      DrawStr        (byval txt as const zstring ptr, byval x as long, byval y as long)
+    c_DrawStr = define_c_proc(fltkLIB, "DrawStr", {C_POINTER, C_LONG, C_LONG}),
+--declare sub      DrawStrRot        (byval angle as long, byval txt as const zstring ptr, byval x as long, byval y as long)
+    c_DrawStrRot = define_c_proc(fltkLIB, "DrawStrRot", {C_LONG, C_POINTER, C_LONG, C_LONG}),
+--declare sub      DrawSetRGBColor(byval r as ubyte, byval g as ubyte, byval b as ubyte)
+    c_DrawSetRGBColor = define_c_proc (fltkLIB, "DrawSetRGBColor", {C_UBYTE, C_UBYTE, C_UBYTE} ),
+--Sets things up so that the drawing functions will go into this window
+--declare sub      Fl_WindowMakeCurrent(byval win as Fl_Window ptr)
+    c_Fl_WindowMakeCurrent = define_c_proc(fltkLIB, "Fl_WindowMakeCurrent", {C_POINTER} ),
+--declare function Fl_Double_WindowNew     (byval w as long, byval h as long, byval title as const zstring ptr=0) as Fl_Double_Window ptr
+    c_Fl_Double_WindowNew = define_c_func(fltkLIB, "Fl_Double_WindowNew", {C_LONG, C_LONG, C_POINTER}, C_POINTER),
+--It can return much sooner if something happens.
+--declare function Fl_Wait2(byval timeout as double) as double
+    c_Fl_Wait2 = define_c_func(fltkLIB, "Fl_Wait2", {C_DOUBLE}, C_DOUBLE),
+--Returns non-zero if Fl_WindowShow() has been called (but not Fl_WindowHide())
+--declare function Fl_WindowShown(byval win as Fl_Window ptr) as long
+    c_Fl_WindowShown = define_c_func(fltkLIB, "Fl_WindowShown", {C_POINTER}, C_LONG),
+--Draw a single pixel at the given coordinates with current color.
+--declare sub      DrawPoint(byval x as long, byval y as long)
+    c_DrawPoint = define_c_proc(fltkLIB, "DrawPoint", {C_LONG, C_LONG}),
+--declare sub      DrawRectFillColor   (byval x as long, byval y as long, byval w as long, byval h as long, byval c as Fl_COLOR)
+    c_DrawRectFillColor = define_c_proc(fltkLIB, "DrawRectFillColor", {C_LONG,C_LONG,C_LONG,C_LONG, C_LONG}),
+--Draw one or two lines between the given points.
+--declare sub      DrawLine (byval x1 as long, byval y1 as long, byval x2 as long, byval y2 as long)    
+    c_DrawLine = define_c_proc(fltkLIB, "DrawLine", {C_LONG,C_LONG,C_LONG,C_LONG} ),
+--Draw a 1-pixel border inside this bounding box.
+--declare sub      DrawRect(byval x as long, byval y as long, byval w as long, byval h as long)
+    c_DrawRect = define_c_proc(fltkLIB, "DrawRect", {C_LONG,C_LONG,C_LONG,C_LONG}),
+--' DrawArc() draws a series of lines to approximate the arc.
+--declare sub      DrawArc(byval x as long, byval y as long, byval w as long, byval h as long, byval a1 as double, byval a2 as double)
+    c_DrawArc = define_c_proc(fltkLIB, "DrawArc", {C_LONG,C_LONG,C_LONG,C_LONG, C_DOUBLE,C_DOUBLE}),
+--Draws a box using given type, position, size and color. 
+--declare sub      DrawBox(byval bt as FL_BOXTYPE, byval x as long, byval y as long, byval w as long, byval h as long, byval c as Fl_COLOR)
+    c_DrawBox = define_c_proc(fltkLIB, "DrawBox", {C_ULONG, C_LONG,C_LONG,C_LONG,C_LONG, C_ULONG}),
+--Returns Fl_COLOR value from rgb triples
+--declare function Fl_RGB_Color(byval r as ubyte, byval g as ubyte, byval b as ubyte) as Fl_COLOR
+    c_Fl_RGB_Color = define_c_func(fltkLIB, "Fl_RGB_Color", {C_UBYTE,C_UBYTE,C_UBYTE}, C_ULONG),
+--declare function Fl_WindowExNew(byval w as long, byval h as long, byval title as const zstring ptr=0) as Fl_WindowEx ptr
+    c_Fl_BoxExNew = define_c_func(fltkLIB, "Fl_BoxExNew", {C_LONG,C_LONG, C_POINTER}, C_POINTER),
+--declare function Fl_Hor_Value_SliderNew(byval x as long, byval y as long, byval w as long, byval h as long, byval label as const zstring ptr=0) as Fl_Hor_Value_Slider ptr
+    c_Fl_Hor_Value_SliderNew = define_c_func(fltkLIB, "Fl_Hor_Value_SliderNew", {C_LONG,C_LONG,C_LONG,C_LONG, C_POINTER}, C_POINTER),
+--' Gets/Sets the user data for this widget.
+--declare function Fl_WidgetGetUserData(byval wgt as Fl_Widget ptr) as any ptr
+    c_Fl_WidgetGetUserData = define_c_func(fltkLIB, "Fl_WidgetGetUserData", {C_POINTER},C_POINTER),
+--declare sub      Fl_WidgetSetUserData(byval wgt as Fl_Widget ptr, byval v as any ptr)
+    c_Fl_WidgetSetUserData = define_c_proc(fltkLIB, "Fl_WidgetSetUserData", {C_POINTER,C_POINTER})
+
+ 
+
+    
+public function Fl_ButtonNew(atom x, atom y, atom w, atom h, sequence lbl)
+    atom point_str = allocate_string(lbl)
+    return  c_func(c_Fl_ButtonNew, {x,y,w,h, point_str}) 
+end function
+
+public function Fl_WindowNew(atom w, atom h, sequence title)
+    atom point_str = allocate_string(title)
+    return c_func(c_Fl_WindowNew,{w,h, point_str})
+end function 
+
+public procedure Fl_WindowShow(atom win)
+    c_proc(c_Fl_WindowShow,{win})
+end procedure
+
+public function Fl_Run()
+    return c_func(c_Fl_Run,{})
+end function
+
+public procedure Fl_WidgetSetCallback(atom wgt, atom cbk)
+    c_proc(c_Fl_WidgetSetCallback, {wgt, cbk} )
+end procedure
+
+public procedure Fl_Callback(atom wgt, atom pdata)
+    c_proc(c_Fl_Callback, {wgt, pdata} )
+end procedure
+
+public function Fl_Wait()
+    return c_func(c_Fl_Wait, {})
+end function
+
+public function Fl_Handle(atom ev, atom win)
+    return c_func(c_Fl_Handle, {ev, win})
+end function
+
+public function Fl_EventNumber()
+    return c_func(c_Fl_EventNumber,{})
+end function
+
+public procedure Fl_AddHandler(atom ev)
+    c_proc(c_Fl_AddHandler, {ev})
+end procedure
+
+public function Fl_SetScheme(sequence name)
+    atom point_str = allocate_string(name,1)
+    return c_func(c_Fl_SetScheme,{point_str})
+end function
+
+public procedure Fl_WidgetCopyLabel(atom wgt, sequence str)
+    atom point_str = allocate_string(str)
+    c_proc(c_Fl_WidgetCopyLabel, {wgt, point_str} )
+    free(point_str)
+end procedure
+
+public function Fl_WidgetGetLabel(atom wgt)
+    return peek_string (c_func(c_Fl_WidgetGetLabel, {wgt} ))
+end function
+
+public procedure Fl_WidgetSetLabel(atom wgt, sequence str)
+    atom point_str = allocate_string(str)
+    c_proc(c_Fl_WidgetSetLabel, {wgt, point_str})
+    --free(point_str)
+end procedure
+
+public procedure DrawPushClip(atom x, atom y, atom w, atom h)
+    c_proc( c_DrawPushClip,{x,y,w,h} )
+end procedure
+
+public function Fl_WidgetGetW(atom wgt)
+    return c_func(c_Fl_WidgetGetW, {wgt} )
+end function
+
+public function Fl_WidgetGetH(atom wgt)
+    return c_func(c_Fl_WidgetGetH, {wgt} )
+end function
+
+public procedure DrawSetColor(FL_COLOR clr)
+    c_proc(c_DrawSetColor,{clr} )
+end procedure
+
+public procedure DrawRectFill(atom x, atom y, atom w, atom h)
+    c_proc(c_DrawRectFill,{x,y,w,h})
+end procedure
+
+public procedure DrawYXLine(atom x, atom y, atom y1)
+    c_proc(c_DrawYXLine, {x,y,y1} )
+end procedure
+
+public procedure DrawXYLine(atom x, atom y, atom y1)
+    c_proc(c_DrawXYLine, {x,y,y1} )
+end procedure
+
+public procedure DrawPopClip()
+    c_proc(c_DrawPopClip)
+end procedure
+
+public function Fl_Double_WindowExNew(atom w, atom h, sequence title)
+    atom point_str = allocate_string(title)
+    return c_func(c_Fl_Double_WindowExNew,{w,h,point_str})
+end function 
+
+public procedure Fl_Double_WindowExSetDrawCB (atom exwin, atom cb)
+    c_proc(c_Fl_Double_WindowExSetDrawCB , {exwin, cb} )
+end procedure
+
+public procedure Fl_GroupSetResizable(atom grp, atom wgt)
+    c_proc(c_Fl_GroupSetResizable, {grp,wgt})
+end procedure
+
+
+public procedure DrawRectFillRGBColor(atom x, atom y, atom w, atom h, ubyte_ r, ubyte_ g, ubyte_ b)
+    c_proc(c_DrawRectFillRGBColor, {x,y,w,h, r,g,b} )
+end procedure
+
+public procedure DrawSetFont(FL_FONT fnt, FL_FONTSIZE sz)
+    c_proc (c_DrawSetFont,{fnt, sz} )
+end procedure
+
+public procedure DrawStr(sequence str, atom x, atom y)
+    atom point_str = allocate_string(str)
+    c_proc(c_DrawStr,{point_str,x,y})
+    free(point_str)
+end procedure
+
+public procedure DrawStrRot(atom dg, sequence txt, atom x, atom y)
+    atom point_str = allocate_string(txt)
+    c_proc(c_DrawStrRot,{dg, point_str, x, y } )
+    free(point_str)
+end procedure
+
+public procedure DrawSetRGBColor(ubyte_ r, ubyte_ g, ubyte_ b)
+    c_proc(c_DrawSetRGBColor,{r,g,b})
+end procedure
+
+public procedure Fl_WindowMakeCurrent(atom win)
+    c_proc(c_Fl_WindowMakeCurrent, {win})
+end procedure
+
+public function Fl_Double_WindowNew(atom w, atom h, sequence title)
+    atom point_str = allocate_string(title)
+    return c_func(c_Fl_Double_WindowNew, {w,h,point_str} )
+end function
+
+public function Fl_Wait2(atom timeout)
+    return c_func(c_Fl_Wait2, {timeout} )
+end function
+
+public function Fl_WindowShown(atom win)
+    return c_func(c_Fl_WindowShown,{win})
+end function
+
+public procedure DrawPoint(atom x, atom y)
+    c_proc(c_DrawPoint,{x,y})
+end procedure
+
+public procedure DrawRectFillColor(atom x, atom y, atom w, atom h, FL_COLOR c)
+    c_proc(c_DrawRectFillColor, {x,y,w,h, c})
+end procedure
+
+public procedure DrawLine(atom x, atom y, atom x1, atom y1)
+    c_proc(c_DrawLine,{x,y, x1,y1} )
+end procedure
+
+public procedure DrawRect(atom x, atom y, atom w, atom h)
+    c_proc(c_DrawRect, {x,y, w,h})
+end procedure
+
+public procedure DrawArc(atom x, atom y, atom w, atom h, atom a, atom a1)
+    c_proc(c_DrawArc,{x,y,w,h, a,a1})
+end procedure
+
+public procedure DrawBox(FL_BOXTYPE bx, atom x, atom y, atom w, atom h, FL_COLOR cl)
+    c_proc(c_DrawBox,{bx, x,y,w,h, cl})
+end procedure
+
+public function Fl_RGB_Color(ubyte_ r, ubyte_ g, ubyte_ b)
+    return c_func(c_Fl_RGB_Color, {r,g,b} )
+end function
+
+public function Fl_BoxExNew(atom w, atom h, sequence title)
+    atom point_str = allocate_string(title)
+    return c_func(c_Fl_BoxExNew, {w,h,point_str})
+end function
+    
+public function Fl_Hor_Value_SliderNew(atom x, atom y, atom w, atom h, sequence lbl=0)
+    if sequence(lbl) then
+        atom point_str = allocate_string(lbl)
+        return c_func(c_Fl_Hor_Value_SliderNew, {x,y,w,h, lbl})
+    else
+        return c_func(c_Fl_Hor_Value_SliderNew, {x,y,w,h} )
+    end if
+end function
+
+public function Fl_WidgetGetUserData(atom wgt)
+    return c_func(c_Fl_WidgetGetUserData, {wgt})
+end function
+
+public procedure Fl_WidgetSetUserData(atom wgt, atom val)
+    c_proc(c_Fl_WidgetSetUserData, {wgt, val})
+end procedure
